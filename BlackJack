@@ -1,0 +1,196 @@
+ module BlackJack(
+//Entradas
+	input reset,
+	input clock,
+	input hit,
+	input stay,
+    input wire [3:0] card,
+    
+//Saídas 	
+	output reg win,
+	output reg tie,
+	output reg lose,
+  	output reg dhit,
+  	output reg dstay
+    );
+  
+localparam 	inicio = 3'b000,
+				cartaJogador = 3'b001,
+				cartaDealer	= 3'b010,
+				jogador	= 3'b011,
+				dealer	= 3'b100,
+				RESULTADO	= 3'b101;
+  				
+
+
+  reg [4:0] dealerhand;
+  reg [4:0] playerhand;
+  reg [2:0] estado;
+  reg [2:0] proximo_estado;
+  reg [1:0] contador;
+  reg atrasoHit;
+	reg atrasoDHit;
+	reg reqDhit;
+	
+	
+	  always @(posedge clock)begin
+    if(estado == 2 && hit)						atrasoHit <= 1;
+		if(estado == 4 && dhit)						atrasoDHit <=1;
+	end
+	
+	always @(posedge clock or posedge reset) begin
+		if(reset) 									
+		estado <= inicio;
+		else 										
+		estado <= proximo_estado;
+		
+		if(estado == 4 && reqDhit)
+		dhit <= 1;
+		else 										
+		dhit <= 0;
+		 					
+		
+	end
+	
+	//distribuir cartas
+	always @(posedge clock)
+	begin
+      case(estado)
+	contador = 0;
+	cartaJogador:
+              begin
+                if(contador%2 == 0 && contador<4)
+                  begin
+                   if(card)
+                      begin 	
+                        playerhand = playerhand + card;				
+                        contador = contador + 1;					
+                          proximo_estado = cartaDealer;
+					
+                        end
+              		end
+              end
+				  
+            cartaDealer:
+              begin
+                if(contador%2 != 0 && contador<4)
+                  begin
+                if(card)
+                       
+                        begin	
+                      dealerhand = dealerhand + card;				
+                      contador = contador + 1;
+                          if(contador == 3)
+                            begin
+                          proximo_estado = jogador;
+                            end
+                          else
+                            proximo_estado = cartaJogador;
+							end
+                  end
+              end
+      endcase
+	end
+	
+	//contador
+	always @(posedge clock)
+	begin
+	
+	
+			//cartas jogador
+			  if(atrasoHit == 1 && estado == 3)
+                    
+                  begin		
+                    
+                 	proximo_estado = jogador;								
+                  playerhand = playerhand + card;
+					   
+				end
+				//carta dealer
+				 if(atrasoDHit && estado == 4)   
+                    begin
+                    
+                	proximo_estado = dealer;
+					   dealerhand = dealerhand + card;
+					
+                    
+				end
+	end
+	
+ 
+ 
+  
+ //maquina
+ always @(*) 
+      begin
+		lose  = 0;	
+        tie   = 0;	
+        dstay = 0;	
+        win   = 0;
+        
+        case(estado)
+			inicio:
+              begin 
+               
+             	
+            
+                dhit = 0;
+                
+                
+                atrasoDHit = 0;
+                if(hit == 1)
+                proximo_estado = cartaJogador;
+                
+				 end
+          
+			jogador:begin
+				  if(playerhand > 21)	
+                  
+                 	 proximo_estado = RESULTADO;
+						 atrasoHit = 0;
+				
+				 if(stay)
+                  
+                  proximo_estado = dealer;
+						atrasoHit =0; 
+              
+				 if(hit)
+                  atrasoHit = 1;
+              
+            
+			end
+			dealer:begin
+              if(dealerhand > 16)	
+                  
+                 	 proximo_estado = RESULTADO;
+						 reqDhit=0;
+			
+                  if(!dhit) 
+                    
+                 	 reqDhit = 1;
+                 
+			end
+          
+			RESULTADO:
+              begin
+				dstay = 1;
+				proximo_estado = RESULTADO;
+                
+                if(dealerhand == playerhand || (dealerhand > 21 && playerhand > 21))
+				tie 	= 1;
+                
+                else if(dealerhand > playerhand && dealerhand <= 21 && playerhand <= 21)
+				lose = 1;
+                
+                else if(playerhand > dealerhand && dealerhand <= 21 && playerhand <= 21)
+				win = 1;
+                
+                else if(dealerhand <= 21 && playerhand > 21)
+				lose = 1;
+                
+                else if(playerhand <= 21 && dealerhand > 21)
+				win = 1;
+			end
+		endcase
+	end 	
+endmodule 
