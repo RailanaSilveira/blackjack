@@ -1,0 +1,386 @@
+module blackjack_tb;
+
+parameter ATRASO_INICIAL = 5;
+
+reg CLK, RESET, STAY, HIT;
+reg [3:0] CARD;
+wire WIN, LOSE, TIE, DHIT, DSTAY;
+
+reg [4:0] vPlayerHand, vDealerHand;
+reg [3:0] i, game;
+
+BlackJack DUV (
+  .clock(CLK),
+  .reset(RESET), 
+  .stay(STAY), 
+  .hit(HIT), 
+  .card(CARD), 
+  .win(WIN), 
+  .lose(LOSE), 
+  .tie(TIE), 
+  .dhit(DHIT), 
+  .dstay(DSTAY)   );
+  
+always
+  #5 CLK = !CLK;
+
+initial // time = 0 ------------------------------------------------------------
+begin
+  $dumpfile("dump.vcd"); 
+  $dumpvars;
+  CLK = 1'b1;                              
+  RESET = 1'b0;
+  STAY = 1'b0;
+  HIT = 1'b0;
+  CARD = 4'b0000;
+end
+
+////////////////////////////////////////////////////////////////////////////////
+// Sequência do jogo                                                                /
+////////////////////////////////////////////////////////////////////////////////
+initial
+begin
+
+  // 10 jogos serão jogados  ----------------------------------------------------
+  for (game = 0; game < 10; game = game + 1)
+  begin
+    // RESET inicial  -----------------------------------------------------------
+    vPlayerHand = 0;
+    vDealerHand = 0;
+    CARD = 4'b0000;
+    HIT = 1'b1;
+    STAY = 1'b0;
+    wait (CLK == 1'b0);                   // espere a queda do CLK 
+    #100 RESET = 1'b1;                    // time = x5
+    #10 RESET = 1'b0;                     // time = x5
+    #ATRASO_INICIAL;                      // time = x5
+    
+    // Distribuição inicial das cartas  -----------------------------------------------
+    HIT = 1'b1;
+    for ( i = 0 ; i < 4 ; i = i + 1 ) 
+    begin
+        #5 CARD = DATA_GAME(game, i);          // Na borda ascendente de CLK (time = x0)
+        if (i % 2 == 0)
+          vPlayerHand = vPlayerHand + CARD;
+        else
+          vDealerHand = vDealerHand + CARD;
+        #5;                               // time = x5
+    end
+    HIT = 1'b0;
+  
+    // Vez do jogador  -----------------------------------------------------------
+    i = 4;
+    while (DATA_GAME(game, i) != 0)       // zero denota a permanência do jogador 
+    begin
+        #30 HIT = 1'b1;                   // time = x5
+        #5  CARD = DATA_GAME(game, i);    // Na borda ascendente de CLK  (time = x0)
+        vPlayerHand = vPlayerHand + CARD;
+        i = i + 1;
+        #5 HIT = 1'b0;                    // time = x5
+    end
+    #30 STAY = 1'b1;                      // Na borda descendente de CLK  (time = x5)
+
+    // Vez do dealer -----------------------------------------------------------
+    i = i + 1;
+  #20 
+    CARD = DATA_GAME(game, i);
+    while (DSTAY == 1'b0) 
+    begin 
+        @(DHIT or DSTAY);       
+        if (DHIT == 1'b1)
+        begin
+            vDealerHand = vDealerHand + CARD;
+            i = i + 1;
+            CARD = DATA_GAME(game, i);
+            #10;                              // time = x5
+        end
+    end
+  
+    // Decisão  ----------------------------------------------------------------
+    #30                                 // time = x0  
+    if ({WIN,LOSE,TIE} == EXPECTED(game))
+    begin
+        case ({WIN,LOSE,TIE})
+            3'b100:  $display("%d: Player wins!!! Test OK",game+1);  
+          	3'b010:  $display("%d: Player loses!!! Test OK",game+1);
+            3'b001:  $display("%d: Game drawn...  Test OK",game+1);
+            default: $display("%d: Error!!!!!!!!!!!!!!!!!",game+1);
+        endcase
+    end
+    else $display("Hard rapa is sweet but isn't soft. Fix the code.");
+      
+  end // termina um jogo  ----------------------------------------------------------------
+  # 100 $finish;
+end
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+function [3:0] DATA_GAME; 
+input [3:0] ROW;
+input [3:0] COL; 
+begin 
+    case (ROW)
+      //  a mão do jogador somando 21 pontos e a mão do dealer somando abaixo de 21 pontos
+      0:  case (COL) 
+            // Cartas iniciais 
+            0: DATA_GAME = 1;  // Player (1)
+            1: DATA_GAME = 9;  // Dealer (9)
+            2: DATA_GAME = 1;  // Player (2)
+            3: DATA_GAME = 9;  // Dealer (18)
+            // Vez do jogador
+            4: DATA_GAME = 1;  // Player (3)
+            5: DATA_GAME = 1;  // Player (4)
+            6: DATA_GAME = 2;  // Player (6)
+            7: DATA_GAME = 2;  // Player (8)
+            8: DATA_GAME = 2;  // Player (10)
+            9: DATA_GAME = 2;  // Player (12)
+            10: DATA_GAME = 3; // Player (15)
+            11: DATA_GAME = 3; // Player (18)
+            12: DATA_GAME = 3; // Player (21) 
+            13: DATA_GAME = 0; // Player stays
+            // Vez do dealer
+            14: DATA_GAME = 0; //Não carregue - jogo 0 finalizado (jogador ganha) (Player Wins)
+            15: DATA_GAME = 0; 
+          endcase 
+
+      //  a mão do dealer somando 21 pontos e a mão do jogador somando abaixo de 21 pontos 
+      1:  case (COL) 
+            // Cartas iniciais 
+            0: DATA_GAME = 9;   // Player (9)
+            1: DATA_GAME = 1;   // Dealer (1)
+            2: DATA_GAME = 9;   // Player (18)
+            3: DATA_GAME = 1;   // Dealer (2)
+            // Vez do jogador
+            4: DATA_GAME = 0;   // Player stays
+            // Vez do dealer
+            5: DATA_GAME = 2;   // Dealer (3)
+            6: DATA_GAME = 1;   // Dealer (4)
+            7: DATA_GAME = 2;   // Dealer (6)
+            8: DATA_GAME = 1;   // Dealer (8)
+            9: DATA_GAME = 2;   // Dealer (10)
+            10: DATA_GAME = 2;  // Dealer (12)
+            11: DATA_GAME = 3;  // Dealer (15)
+            12: DATA_GAME = 6;  // Dealer (21) 
+        13: DATA_GAME = 0;  // Não carregue - jogo 1 terminado (jogador perde) Player (Loses)
+            14: DATA_GAME = 0; 
+            15: DATA_GAME = 0; 
+          endcase 
+          
+      //  soma da mão do jogador tanto abaixo de 21 pontos quanto acima da soma da mão do dealer 
+      2:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 10; // Player (10)
+            1: DATA_GAME = 3;  // Dealer (3)
+            2: DATA_GAME = 10; // Player (20)
+            3: DATA_GAME = 3;  // Dealer (6)
+            // Vez do jogador
+            4: DATA_GAME = 0;  // Player stays
+            // Vez do dealer
+            5: DATA_GAME = 2;  // Dealer (8)
+            6: DATA_GAME = 4;  // Dealer (12)
+            7: DATA_GAME = 3;  // Dealer (15)
+            8: DATA_GAME = 1;  // Dealer (16)
+            9: DATA_GAME = 1;  // Dealer (17)
+            10: DATA_GAME = 0; // Não carregue - jogo 2 terminado (jogador ganha)  (Player Wins)
+            11: DATA_GAME = 0; 
+            12: DATA_GAME = 0; 
+            13: DATA_GAME = 0; 
+            14: DATA_GAME = 0; 
+            15: DATA_GAME = 0; 
+          endcase 
+
+      //  soma da mão do dealer tanto abaixo de 21 pontos quanto acima da soma da mão do jogador 
+      3:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 3;   // Player (3)
+            1: DATA_GAME = 10;  // Dealer (10)
+            2: DATA_GAME = 3;   // Player (6)
+            3: DATA_GAME = 4;   // Dealer (14)
+            // Vez do jogador
+            4: DATA_GAME = 2;   // Player (8)
+            5: DATA_GAME = 2;   // Player (10)
+            6: DATA_GAME = 4;   // Player (16)
+            7: DATA_GAME = 3;   // Player (19)
+            8: DATA_GAME = 0;   // Player stays
+            // Vez do dealer
+            9: DATA_GAME = 2;   // Dealer (16)
+            10: DATA_GAME = 4;  // Dealer (20)  
+            11: DATA_GAME = 0;  // Não carregue - jogo 3 terminado (jogador perde) (Player Loses) 
+            12: DATA_GAME = 0; 
+            13: DATA_GAME = 0; 
+            14: DATA_GAME = 0; 
+            15: DATA_GAME = 0; 
+          endcase 
+
+      // a mão do jogador somando até 21 pontos (--------- inclusive ----------) e a mão do dealer somando acima de 21 pontos
+      4:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 10; // Player (10)
+            1: DATA_GAME = 11; // Dealer (11)
+            2: DATA_GAME = 11; // Player (21)
+            3: DATA_GAME = 11; // Dealer (22)
+            // Vez do jogador
+            4: DATA_GAME = 0;  // Não carregue - jogo 4 terminado (jogador ganha)  (Player Wins)
+            5: DATA_GAME = 0;
+            6: DATA_GAME = 0;
+            7: DATA_GAME = 0;
+            8: DATA_GAME = 0;
+            9: DATA_GAME = 0;
+            10: DATA_GAME = 0;
+            11: DATA_GAME = 0; 
+            12: DATA_GAME = 0; 
+            13: DATA_GAME = 0; 
+            14: DATA_GAME = 0; 
+            15: DATA_GAME = 0; 
+          endcase  
+ 
+      // a mão do jogador somando até 21 pontos (inclusive) e a mão do dealer somando acima de 21 pontos 
+      5:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 5;   // Player (5)
+            1: DATA_GAME = 3;   // Dealer (3)
+            2: DATA_GAME = 5;   // Player (10)
+            3: DATA_GAME = 4;   // Dealer (7)
+            // Vez do jogador
+            4: DATA_GAME = 2;   // Player (12)
+            5: DATA_GAME = 4;   // Player (16)
+            6: DATA_GAME = 1;   // Player (17)
+            7: DATA_GAME = 2;   // Player (19)
+            8: DATA_GAME = 0;   // Player stays
+            // Vez do dealer
+            9: DATA_GAME = 1;   // Dealer (8)
+            10: DATA_GAME = 1;  // Dealer (9)
+            11: DATA_GAME = 1;  // Dealer (10) 
+            12: DATA_GAME = 3;  // Dealer (13) 
+            13: DATA_GAME = 3;  // Dealer (16) 
+            14: DATA_GAME = 9;  // Dealer (25) 
+            15: DATA_GAME = 0;  // Não carregue - jogo 5 terminado (jogador ganha) (Player Wins) 
+          endcase  
+
+      // mão do dealer somando até 21 pontos (--------- inclusive ----------) e a mão do jogador somando acima de 21 pontos 
+      6:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 11; // Player (11)
+            1: DATA_GAME = 10; // Dealer (10)
+            2: DATA_GAME = 11; // Player (22)
+            3: DATA_GAME = 11; // Dealer (21)
+            // Vez do jogador
+            4: DATA_GAME = 0;  // Não carregue - jogo 6 terminado (jogador perde)  (Player Loses)
+            5: DATA_GAME = 0;
+            6: DATA_GAME = 0;
+            7: DATA_GAME = 0;
+            8: DATA_GAME = 0;
+            9: DATA_GAME = 0;
+            10: DATA_GAME = 0;
+            11: DATA_GAME = 0; 
+            12: DATA_GAME = 0; 
+            13: DATA_GAME = 0; 
+            14: DATA_GAME = 0; 
+            15: DATA_GAME = 0; 
+          endcase  
+ 
+      // mão do dealer somando até 21 pontos (inclusive) e a mão do jogador somando acima de 21 pontos 
+      7:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 5;   // Player (5)
+            1: DATA_GAME = 3;   // Dealer (3)
+            2: DATA_GAME = 5;   // Player (10)
+            3: DATA_GAME = 4;   // Dealer (7)
+            // Vez do jogador
+            4: DATA_GAME = 7;   // Player (17)
+            5: DATA_GAME = 10;  // Player (27)
+            6: DATA_GAME = 0;   // Não carregue - jogo 7 terminado (jogador perde)  (Player Loses)
+            7: DATA_GAME = 0;   
+            8: DATA_GAME = 0;   
+            9: DATA_GAME = 0;   
+            10: DATA_GAME = 0;  
+            11: DATA_GAME = 0;  
+            12: DATA_GAME = 0;  
+            13: DATA_GAME = 0;  
+            14: DATA_GAME = 0;  
+            15: DATA_GAME = 0;   
+          endcase  
+
+      // a soma da mão do jogador é igual à soma da mão do dealer, e tal soma não é superior a 21 pontos 
+      8:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 11;   // Player (11)
+            1: DATA_GAME = 10;   // Dealer (10)
+            2: DATA_GAME = 10;   // Player (21)
+            3: DATA_GAME = 11;   // Dealer (21)
+            // Vez do jogador
+            4: DATA_GAME = 0;   // Não carregue - jogo 8 empatado (jogo desenhado) (Game Drawn)
+            5: DATA_GAME = 0;  
+            6: DATA_GAME = 0;  
+            7: DATA_GAME = 0;   
+            8: DATA_GAME = 0;   
+            9: DATA_GAME = 0;   
+            10: DATA_GAME = 0;  
+            11: DATA_GAME = 0;  
+            12: DATA_GAME = 0;  
+            13: DATA_GAME = 0;  
+            14: DATA_GAME = 0;  
+            15: DATA_GAME = 0;   
+          endcase   
+ 
+      // a soma da mão do jogador é igual à soma da mão do dealer, e tal soma não é superior a 21 pontos  
+      9:  case (COL) 
+            // Cartas iniciais
+            0: DATA_GAME = 9; // Player (9)
+            1: DATA_GAME = 7; // Dealer (7)
+            2: DATA_GAME = 8; // Player (17)
+            3: DATA_GAME = 9; // Dealer (16)
+            // Vez do jogador
+            4: DATA_GAME = 0; // Player stays
+            // Vez do dealer
+            5: DATA_GAME = 1; // Dealer (17)
+         	6: DATA_GAME = 0; // Não carregue - jogo 9 finalizado (jogo empatado) (Game Drawn)
+            7: DATA_GAME = 0;
+            8: DATA_GAME = 0;
+            9: DATA_GAME = 0;
+            10: DATA_GAME = 0; 
+            11: DATA_GAME = 0; 
+            12: DATA_GAME = 0; 
+            13: DATA_GAME = 0; 
+            14: DATA_GAME = 0; 
+            15: DATA_GAME = 0; 
+          endcase 
+    endcase
+end
+endfunction 
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+function [2:0] EXPECTED; 
+input [3:0] game; 
+begin 
+    case (game)////////WLT
+      0: EXPECTED = 3'b100; // Player Wins
+      1: EXPECTED = 3'b010; // Player Loses
+      2: EXPECTED = 3'b100; // Player Wins
+      3: EXPECTED = 3'b010; // Player Loses
+      4: EXPECTED = 3'b100; // Player Wins
+      5: EXPECTED = 3'b100; // Player Wins
+      6: EXPECTED = 3'b010; // Player Loses
+      7: EXPECTED = 3'b010; // Player Loses
+      8: EXPECTED = 3'b001; // Game Drawn
+      9: EXPECTED = 3'b001; // Game Drawn
+      default: EXPECTED = 3'b001; // Game Drawn 
+    endcase 
+end
+endfunction 
+
+
+initial
+begin
+  vPlayerHand = 0;
+  vDealerHand = 0;
+  $display("\t\tTIME\t\tCLK\tRESET\tCARD\tPLAYER\tDEALER\tHIT\tSTAY\tDHIT\tDSTAY\tWIN\tLOSE\tTIE");
+  $monitor("%d\t\t%b\t%b\t%d\t%d\t%d\t%b\t%b\t%b\t%b\t%b\t%b\t%b",$time,CLK,RESET,CARD,vPlayerHand,vDealerHand,HIT,STAY, DHIT,DSTAY,WIN,LOSE,TIE);
+end
+
+endmodule
